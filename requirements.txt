@@ -1,0 +1,5 @@
+pycryptodome
+pandas
+filetype
+requests
+sqlite3
