@@ -89,6 +89,15 @@ def getMemoriesFromURL(df):
 			f.write(r.content)
 		print("got file")
 
+		if row["ZOVERLAYDOWNLOADURL"] != None:
+			print(row["ZOVERLAYDOWNLOADURL"])
+			rOverlay = requests.get(row["ZOVERLAYDOWNLOADURL"], allow_redirects=True)
+			if rOverlay.status_code == 200:
+				with open(f"./DecryptedMemories/{row['ID']}_overlay", 'wb') as f:
+					f.write(rOverlay.content)
+				print("got overlay")
+				break;
+
 def fixMEOkeys(persistedKey, df_merge):
 
 	with open("temp.plist", "wb") as f:
@@ -142,6 +151,22 @@ def decryptMemories(egocipherKey, persistedKey, df_merge):
 				print(f"Could not find file extension of {file}")
 				with open(file+"."+"nokind", "wb") as f:
 					f.write(dec_data)
+
+			overlayFile = file + "_overlay"
+			if os.path.exists(overlayFile):
+				print(f"Decrypting overlay: {overlayFile}")
+				with open(overlayFile, "rb") as f:
+					enc_data = f.read()
+				dec_data = aes.decrypt(enc_data)
+
+				kind = filetype.guess(dec_data)
+				if kind != None:
+					with open(overlayFile+"."+kind.extension, "wb") as f:
+						f.write(dec_data)
+				else:
+					print(f"Could not find file extension of {overlayFile}")
+					with open(overlayFile+"."+"nokind", "wb") as f:
+						f.write(dec_data)
 
 		except Exception as Error:
 			print(f"Error decryption snap ID {row['ID']} {Error}")
