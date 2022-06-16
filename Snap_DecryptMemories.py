@@ -10,6 +10,7 @@ import requests
 import sqlite3
 import ccl_bplist
 import filetype
+import subprocess
 
 header_size = 0x10
 page_size=0x400
@@ -56,9 +57,9 @@ def getMemoryKey(db):
 	query= """
 	select
 	snap_id as ID,
-	KEY,
-	IV,
-	ENCRYPTED
+	KEY as KEY,
+	IV as IV,
+	ENCRYPTED as ENCRYPTED
 	from snap_key_iv"""
 
 	df = pd.read_sql_query(query, conn)
@@ -70,7 +71,8 @@ def getSCDBInfo(db):
 	query= """
 	select
 	ZMEDIAID as ID,
-	ZMEDIADOWNLOADURL
+	ZMEDIADOWNLOADURL,
+	ZOVERLAYDOWNLOADURL
 	from ZGALLERYSNAP
 	WHERE ZMEDIADOWNLOADURL IS NOT NULL"""
 
@@ -140,9 +142,25 @@ def decryptMemories(egocipherKey, persistedKey, df_merge):
 				print(f"Could not find file extension of {file}")
 				with open(file+"."+"nokind", "wb") as f:
 					f.write(dec_data)
+
 		except Exception as Error:
 			print(f"Error decryption snap ID {row['ID']} {Error}")
 
+
+def recoverDatabase():
+	subprocess.call(["sqlite3", decryptedName, ".output recovery.sql", ".dump"])
+	recoveredFile = decryptedName + "_r"
+	if os.path.exists(recoveredFile):
+		os.remove(recoveredFile)
+	recoveredConn = None
+	try:
+		recoveredConn = sqlite3.connect(recoveredFile)
+	except Error as e:
+		print(e)
+	with open("recovery.sql", "r") as recoverySql:
+		recoveredConn.executescript(recoverySql.read())
+		recoveredConn.close
+	print("Database Recovered!")
 
 
 def main():
@@ -157,8 +175,9 @@ def main():
 		persistedKey = ""
 	decryptedName = "gallery_decrypted.sqlite"
 	decryptGallery(enc_db, egocipherKey)
-	print("OPEN UP THE GALLERY_DECRYPTED.DB IN FORENSIC SQLITE BROWSER")
-	os.system("pause")
+	recoverDatabase()
+	#print("OPEN UP THE GALLERY_DECRYPTED.DB IN FORENSIC SQLITE BROWSER")
+	#os.system("pause")
 	
 
 	df_MemoryKey = getMemoryKey(decryptedName + "_r")
@@ -166,6 +185,7 @@ def main():
 
 	df_merge = pd.merge(df_MemoryKey, df_SCDBInfo, on=["ID"])
 
+	
 	getMemoriesFromURL(df_merge)
 
 	decryptMemories(egocipherKey, persistedKey, df_merge)
