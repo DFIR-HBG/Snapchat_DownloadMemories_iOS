@@ -1,5 +1,6 @@
 import os
 import base64
+from sqlite3.dbapi2 import DatabaseError
 from Crypto.Cipher import AES
 import sys
 from binascii import unhexlify
@@ -211,7 +212,7 @@ def timestampsconv(webkittime):
 	finaltime = datetime.utcfromtimestamp(unix_timestamp)
 	return(finaltime)
 
-def recoverDatabase():
+def recoverWithSqlite():
 	subprocess.call(["sqlite3", decryptedName, ".output recovery.sql", ".dump"])
 	recoveredFile = decryptedName + "_r"
 	if os.path.exists(recoveredFile):
@@ -225,6 +226,45 @@ def recoverDatabase():
 		recoveredConn.executescript(recoverySql.read())
 		recoveredConn.close
 	print("Database Recovered!")
+
+def recoverWithTool():
+	print("OPEN UP THE GALLERY_DECRYPTED.DB IN FORENSIC SQLITE BROWSER - Make sure recovered database is named  GALLERY_DECRYPTED.DB_r")
+	os.system("pause")
+
+def isSqliteInstalled() -> bool:
+	try:
+		subprocess.call(["sqlite3", "-version"])
+	except FileNotFoundError as e:
+		print("SQLite3 not installed")
+		return False
+	return True
+
+
+def checkDatabase() -> bool:
+	try:
+		conn = sqlite3.connect(decryptedName)
+		query= """
+		SELECT name FROM sqlite_schema
+		WHERE type='table'
+		ORDER BY name"""
+
+		df = conn.execute(query)
+	except sqlite3.DatabaseError as e:
+		return False
+	return True
+	
+
+def recoverDatabase():
+	databaseValid = checkDatabase()
+	if databaseValid:
+		return
+	else:
+		if isSqliteInstalled():
+			recoverWithSqlite()
+		else:
+			recoverWithTool()
+
+
 
 def createFullSnapImages(df_merge):
 	pattern = '_overlay'
@@ -247,7 +287,7 @@ def createFullSnapImages(df_merge):
 
 def generateReport(df_merge):
 	filePath = "./DecryptedMemories/"
-	#createFullSnapImages(df_merge)
+	createFullSnapImages(df_merge)
 	df_report = pd.DataFrame(columns=['ID', 'Image', 'Overlay'])
 	print(df_merge.shape)
 	count = 0
@@ -328,24 +368,21 @@ def main():
 	except:
 		persistedKey = ""
 	decryptedName = "gallery_decrypted.sqlite"
-	#decryptGallery(enc_db, egocipherKey)
-	#recoverDatabase()
 	
+	decryptGallery(enc_db, egocipherKey)
 	
-	#print("OPEN UP THE GALLERY_DECRYPTED.DB IN FORENSIC SQLITE BROWSER")
-	#os.system("pause")
-	
+	recoverDatabase()
 
 	df_MemoryKey = getMemoryKey(decryptedName + "_r")
 	df_SCDBInfo = getFullSCDBInfo(scdb)
-
 	df_merge = pd.merge(df_MemoryKey, df_SCDBInfo, on=["ID"])
 	
-	#getMemoriesFromURL(df_merge)
+	getMemoriesFromURL(df_merge)
 
 	df_merge = decryptMemories(egocipherKey, persistedKey, df_merge)
+	
 	generateReport(df_merge)
-	print("Decrypted memories can be found in the DecryptedMemories folder")
+	print("Decrypted memories can be found in the DecryptedMemories folder. report.html can be found in Current Folder")
 	
 
 if __name__ == "__main__":
