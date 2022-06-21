@@ -5,12 +5,14 @@ import sys
 from binascii import unhexlify
 from binascii import hexlify
 from shutil import copy2, rmtree
+from datetime import datetime
 import pandas as pd
 import requests
 import sqlite3
 import ccl_bplist
 import filetype
 import subprocess
+from PIL import Image
 
 header_size = 0x10
 page_size=0x400
@@ -80,8 +82,22 @@ def getSCDBInfo(db):
 
 	return df
 
+def getFullSCDBInfo(db):
+	conn = sqlite3.connect(db)
+	query= """
+	select
+	ZMEDIAID as ID,
+	*
+	from ZGALLERYSNAP
+	WHERE ZMEDIADOWNLOADURL IS NOT NULL"""
+
+	df = pd.read_sql_query(query, conn)
+
+	return df
+
 def getMemoriesFromURL(df):
 
+	count = 0
 	os.makedirs("DecryptedMemories", exist_ok=True)
 	for index, row in df.iterrows():
 		r = requests.get(row["ZMEDIADOWNLOADURL"], allow_redirects=True)
@@ -90,13 +106,15 @@ def getMemoriesFromURL(df):
 		print("got file")
 
 		if row["ZOVERLAYDOWNLOADURL"] != None:
-			print(row["ZOVERLAYDOWNLOADURL"])
 			rOverlay = requests.get(row["ZOVERLAYDOWNLOADURL"], allow_redirects=True)
 			if rOverlay.status_code == 200:
 				with open(f"./DecryptedMemories/{row['ID']}_overlay", 'wb') as f:
 					f.write(rOverlay.content)
 				print("got overlay")
-				break;
+
+		count = count + 1
+
+
 
 def fixMEOkeys(persistedKey, df_merge):
 
@@ -124,7 +142,6 @@ def fixMEOkeys(persistedKey, df_merge):
 	return df_merge
 
 def decryptMemories(egocipherKey, persistedKey, df_merge):
-	
 	try:
 		egocipherKey = unhexlify(egocipherKey)
 		persistedKey = unhexlify(persistedKey)
@@ -133,27 +150,36 @@ def decryptMemories(egocipherKey, persistedKey, df_merge):
 		persistedKey = base64.b64decode(persistedKey)
 
 	df_merge = fixMEOkeys(persistedKey, df_merge)
-
+	df_merge["filename"] = ""
+	df_merge["overlayFilename"] = ""
+	count = 0
 	for index, row in df_merge.iterrows():
+		count = count + 1
 		try:
 			aes = AES.new(row["KEY"], AES.MODE_CBC, row["IV"])
-			file = f"DecryptedMemories/{row['ID']}"
-			print(f"Decrypting {file}")
+			filename = row['ID']
+			file = f"DecryptedMemories/{filename}"
+			print(f"decrypting {file}")
 			with open(file, "rb") as f:
 				enc_data = f.read()
 			dec_data = aes.decrypt(enc_data)
 
 			kind = filetype.guess(dec_data)
+			print(index)
 			if kind != None:
 				with open(file+"."+kind.extension, "wb") as f:
 					f.write(dec_data)
+					df_merge.loc[index, "filename"] = filename+"."+kind.extension
 			else:
-				print(f"Could not find file extension of {file}")
+				print(f"could not find file extension of {file}")
 				with open(file+"."+"nokind", "wb") as f:
 					f.write(dec_data)
-
-			overlayFile = file + "_overlay"
+					df_merge.loc[index, "filename"] = filename+"."+"nokind"
+				
+			overlayFilename = filename + "_overlay"
+			overlayFile = f"DecryptedMemories/{overlayFilename}"
 			if os.path.exists(overlayFile):
+				aes = AES.new(row["KEY"], AES.MODE_CBC, row["IV"])
 				print(f"Decrypting overlay: {overlayFile}")
 				with open(overlayFile, "rb") as f:
 					enc_data = f.read()
@@ -163,14 +189,27 @@ def decryptMemories(egocipherKey, persistedKey, df_merge):
 				if kind != None:
 					with open(overlayFile+"."+kind.extension, "wb") as f:
 						f.write(dec_data)
+						df_merge.loc[index, "overlayFilename"] = overlayFilename+"."+kind.extension
 				else:
 					print(f"Could not find file extension of {overlayFile}")
 					with open(overlayFile+"."+"nokind", "wb") as f:
 						f.write(dec_data)
+						df_merge.loc[index, "overlayFilename"] = overlayFilename+"."+"nokind"
+			
+				
 
 		except Exception as Error:
+			
 			print(f"Error decryption snap ID {row['ID']} {Error}")
 
+	return df_merge
+
+def timestampsconv(webkittime):
+	if pd.isna(webkittime):
+		return ""
+	unix_timestamp = webkittime + 978307200
+	finaltime = datetime.utcfromtimestamp(unix_timestamp)
+	return(finaltime)
 
 def recoverDatabase():
 	subprocess.call(["sqlite3", decryptedName, ".output recovery.sql", ".dump"])
@@ -187,6 +226,96 @@ def recoverDatabase():
 		recoveredConn.close
 	print("Database Recovered!")
 
+def createFullSnapImages(df_merge):
+	pattern = '_overlay'
+	filePath = "DecryptedMemories/"
+	os.makedirs("DecryptedMemories/FullSnap", exist_ok=True)
+	for index, row in df_merge.iterrows():
+		filename = row['filename']
+		if filename != "":
+			file = filePath + filename
+			#need to detect videos
+			fileTypeMime = filetype.guess(file).mime
+			if fileTypeMime != "video/mp4" and fileTypeMime != "video/quicktime":
+				background = Image.open(file)
+				if row['overlayFilename'] != "":
+					foreground = Image.open(filePath + row['overlayFilename'])
+					background.paste(foreground, (0, 0), foreground)
+				background.save(filePath + 'FullSnap/' + filename)
+			else:
+				print("VIDEO FILES NOT SUPPORTED YET")
+
+def generateReport(df_merge):
+	filePath = "./DecryptedMemories/"
+	#createFullSnapImages(df_merge)
+	df_report = pd.DataFrame(columns=['ID', 'Image', 'Overlay'])
+	print(df_merge.shape)
+	count = 0
+	for index, row in df_merge.iterrows():
+		count = count + 1
+		id = row['ZMEDIAID']
+		format = row['ZSERVLETMEDIAFORMAT']
+		columns = ['ID', 'Image', 'Overlay', 'Create Time (UTC)', 'Capture Time (UTC)', 'Duration', 'Camera']
+		createTime = timestampsconv(row['ZCREATETIMEUTC'])
+		captureTime = timestampsconv(row['ZCAPTURETIMEUTC'])
+		duration = row['ZDURATION']
+		camera = "Front" if row['ZCAMERAFRONTFACING'] == 1 else "Back"
+		if row['overlayFilename'] != "":
+			if format[0:5] == "video":
+				rowData = [id, 
+						   makeVideo(filePath + row['filename']), 
+						   makeImg(filePath + row['overlayFilename']),
+						   createTime,
+						   captureTime,
+						   duration,
+						   camera
+						   ]
+				
+			else:
+				rowData = [id, 
+							makeImg(filePath + "FullSnap/" + row['filename']), 
+							makeImg(filePath + row['overlayFilename']),
+						   createTime,
+						   captureTime,
+						   duration,
+						   camera
+							]
+		else:
+			if format[0:5] == "video":
+				rowData = [id, 
+							makeVideo(filePath + row['filename']), 
+							"",
+						   createTime,
+						   captureTime,
+						   duration,
+						   camera
+							]
+			else:
+				rowData = [id, 
+							makeImg(filePath + "FullSnap/" + 
+							row['filename']), 
+							"",
+						   createTime,
+						   captureTime,
+						   duration,
+						   camera
+							]
+		df_row = pd.DataFrame([rowData], columns=columns)
+		df_report = pd.concat([df_report, df_row])
+		df_report.sort_values(by=["Create Time (UTC)"], ascending=True, inplace=True)
+		print(f'Records Added to Report: {len(df_report)}')
+
+	print(df_report.info())
+	df_report.to_html(open('report.html', 'w'), escape=False, index=False)
+	
+
+def makeImg(src):
+	return f'<img src="{src}" width="200"/>'
+
+
+def makeVideo(src):
+	return f'<video width="200" preload="none" controls><source src="{src}" type="video/mp4">Your browser does not support the video tag.</video>'
+
 
 def main():
 	global decryptedName
@@ -199,22 +328,23 @@ def main():
 	except:
 		persistedKey = ""
 	decryptedName = "gallery_decrypted.sqlite"
-	decryptGallery(enc_db, egocipherKey)
-	recoverDatabase()
+	#decryptGallery(enc_db, egocipherKey)
+	#recoverDatabase()
+	
+	
 	#print("OPEN UP THE GALLERY_DECRYPTED.DB IN FORENSIC SQLITE BROWSER")
 	#os.system("pause")
 	
 
 	df_MemoryKey = getMemoryKey(decryptedName + "_r")
-	df_SCDBInfo = getSCDBInfo(scdb)
+	df_SCDBInfo = getFullSCDBInfo(scdb)
 
 	df_merge = pd.merge(df_MemoryKey, df_SCDBInfo, on=["ID"])
-
 	
-	getMemoriesFromURL(df_merge)
+	#getMemoriesFromURL(df_merge)
 
-	decryptMemories(egocipherKey, persistedKey, df_merge)
-
+	df_merge = decryptMemories(egocipherKey, persistedKey, df_merge)
+	generateReport(df_merge)
 	print("Decrypted memories can be found in the DecryptedMemories folder")
 	
 
