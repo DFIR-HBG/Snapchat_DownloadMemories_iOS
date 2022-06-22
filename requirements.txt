@@ -2,4 +2,4 @@ pycryptodome
 pandas
 filetype
 requests
-sqlite3
+pillow
