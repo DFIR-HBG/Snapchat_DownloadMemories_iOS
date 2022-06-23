@@ -366,16 +366,12 @@ def getCocoaCoreTime(dt):
 
 def filterDfByDates(df_merge, start_date, end_date):
 	if start_date != None and end_date != None:
-		print("both set")
 		return df_merge[(df_merge['ZCREATETIMEUTC'] >= start_date) & (df_merge['ZCREATETIMEUTC'] < end_date)]
 	elif start_date != None:
-		print("start only")
 		return df_merge[(df_merge['ZCREATETIMEUTC'] >= start_date)]
 	elif end_date != None:
-		print("end only")
 		return df_merge[(df_merge['ZCREATETIMEUTC'] < end_date)]
 	else:
-		print("none set")
 		return df_merge
 
 
