@@ -7,6 +7,7 @@ from binascii import unhexlify
 from binascii import hexlify
 from shutil import copy2, rmtree
 from datetime import datetime
+import calendar
 import pandas as pd
 import requests
 import sqlite3
@@ -98,7 +99,6 @@ def getFullSCDBInfo(db):
 
 def getMemoriesFromURL(df):
 
-	count = 0
 	os.makedirs("DecryptedMemories", exist_ok=True)
 	for index, row in df.iterrows():
 		r = requests.get(row["ZMEDIADOWNLOADURL"], allow_redirects=True)
@@ -113,7 +113,6 @@ def getMemoriesFromURL(df):
 					f.write(rOverlay.content)
 				print("got overlay")
 
-		count = count + 1
 
 
 
@@ -153,9 +152,7 @@ def decryptMemories(egocipherKey, persistedKey, df_merge):
 	df_merge = fixMEOkeys(persistedKey, df_merge)
 	df_merge["filename"] = ""
 	df_merge["overlayFilename"] = ""
-	count = 0
 	for index, row in df_merge.iterrows():
-		count = count + 1
 		try:
 			aes = AES.new(row["KEY"], AES.MODE_CBC, row["IV"])
 			filename = row['ID']
@@ -166,7 +163,6 @@ def decryptMemories(egocipherKey, persistedKey, df_merge):
 			dec_data = aes.decrypt(enc_data)
 
 			kind = filetype.guess(dec_data)
-			print(index)
 			if kind != None:
 				with open(file+"."+kind.extension, "wb") as f:
 					f.write(dec_data)
@@ -196,19 +192,16 @@ def decryptMemories(egocipherKey, persistedKey, df_merge):
 					with open(overlayFile+"."+"nokind", "wb") as f:
 						f.write(dec_data)
 						df_merge.loc[index, "overlayFilename"] = overlayFilename+"."+"nokind"
-			
-				
-
 		except Exception as Error:
 			
 			print(f"Error decryption snap ID {row['ID']} {Error}")
 
 	return df_merge
 
-def timestampsconv(webkittime):
-	if pd.isna(webkittime):
+def timestampsconv(cocoaCore):
+	if pd.isna(cocoaCore):
 		return ""
-	unix_timestamp = webkittime + 978307200
+	unix_timestamp = cocoaCore + 978307200
 	finaltime = datetime.utcfromtimestamp(unix_timestamp)
 	return(finaltime)
 
@@ -225,6 +218,7 @@ def recoverWithSqlite():
 	with open("recovery.sql", "r") as recoverySql:
 		recoveredConn.executescript(recoverySql.read())
 		recoveredConn.close
+	os.remove("recovery.sql")
 	print("Database Recovered!")
 
 def recoverWithTool():
@@ -289,10 +283,7 @@ def generateReport(df_merge):
 	filePath = "./DecryptedMemories/"
 	createFullSnapImages(df_merge)
 	df_report = pd.DataFrame(columns=['ID', 'Image', 'Overlay'])
-	print(df_merge.shape)
-	count = 0
 	for index, row in df_merge.iterrows():
-		count = count + 1
 		id = row['ZMEDIAID']
 		format = row['ZSERVLETMEDIAFORMAT']
 		columns = ['ID', 'Image', 'Overlay', 'Create Time (UTC)', 'Capture Time (UTC)', 'Duration', 'Camera']
@@ -345,7 +336,6 @@ def generateReport(df_merge):
 		df_report.sort_values(by=["Create Time (UTC)"], ascending=True, inplace=True)
 		print(f'Records Added to Report: {len(df_report)}')
 
-	print(df_report.info())
 	df_report.to_html(open('report.html', 'w'), escape=False, index=False)
 	
 
@@ -354,7 +344,36 @@ def makeImg(src):
 
 
 def makeVideo(src):
-	return f'<video width="200" preload="none" controls><source src="{src}" type="video/mp4">Your browser does not support the video tag.</video>'
+	return f'<video width="200" preload="none" controls><source src="{src}" type="video/mp4">Your browser does not support the video tag.</video><a href="{src}" download>Download</a>'
+
+def promptDate(type):
+	date_entry = input(f'Enter {type} date in YYYY-MM-DD format. Leave blank to skip\n')
+	
+	if date_entry == "":
+		return None
+
+	year, month, day = map(int, date_entry.split('-'))
+	if(type == "end"):
+		day = day+1
+	dt = datetime(year, month, day)
+	
+	return getCocoaCoreTime(dt)
+
+def getCocoaCoreTime(dt):
+	unix_timestamp = calendar.timegm(dt.timetuple())
+	cocoaCore = unix_timestamp - 978307200
+	return(cocoaCore)
+
+def filterDfByDates(df_merge, start_date, end_date):
+	if start_date != None and end_date != None:
+		return df_merge[(df_merge['ZCREATETIMEUTC'] >= start_date) & (df_merge['ZCREATETIMEUTC'] < end_date)]
+	elif start_date != None:
+		return df_merge[(df_merge['ZCREATETIMEUTC'] >= start_date)]
+	elif end_date != None:
+		return df_merge[(df_merge['ZCREATETIMEUTC'] < end_date)]
+	else:
+		return df_merge
+
 
 
 def main():
@@ -368,6 +387,12 @@ def main():
 	except:
 		persistedKey = ""
 	decryptedName = "gallery_decrypted.sqlite"
+
+	start_date = promptDate("start")
+	end_date = promptDate("end")
+
+	
+
 	
 	decryptGallery(enc_db, egocipherKey)
 	
@@ -377,6 +402,10 @@ def main():
 	df_SCDBInfo = getFullSCDBInfo(scdb)
 	df_merge = pd.merge(df_MemoryKey, df_SCDBInfo, on=["ID"])
 	
+	df_merge = filterDfByDates(df_merge, start_date, end_date)
+	print(max(df_merge['ZCREATETIMEUTC']))
+	print(min(df_merge['ZCREATETIMEUTC']))
+	exit()
 	getMemoriesFromURL(df_merge)
 
 	df_merge = decryptMemories(egocipherKey, persistedKey, df_merge)
