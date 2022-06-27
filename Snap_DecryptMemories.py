@@ -403,9 +403,7 @@ def main():
 	df_merge = pd.merge(df_MemoryKey, df_SCDBInfo, on=["ID"])
 	
 	df_merge = filterDfByDates(df_merge, start_date, end_date)
-	print(max(df_merge['ZCREATETIMEUTC']))
-	print(min(df_merge['ZCREATETIMEUTC']))
-	exit()
+	
 	getMemoriesFromURL(df_merge)
 
 	df_merge = decryptMemories(egocipherKey, persistedKey, df_merge)
