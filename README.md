@@ -20,4 +20,4 @@ Program will prompt you to open the decrypted database in forensic browser; do s
 
 IF YOU USE ANY OTHER PROGRAM THAN SANDERSON FORENSIC BROWSER FOR SQLITE: the script is looking for a file named "gallery_decrypted.sqlite_r" which is the default name given in sandersons. Using anything else will necessitate you to rename the file.
 
-Any questions just DM Cygonaut#7609 on Discord
+Any questions just DM Oscar#1526 or Cygonaut#7609 on Discord
