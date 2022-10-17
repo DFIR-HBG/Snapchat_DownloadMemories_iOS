@@ -14,7 +14,9 @@ After decrypting the database, it must be repaired. If you have SQLite3 installe
 
 
 Run via CMD
-DecryptMemories.py [gallery_encrypteddb] [scdb-27.sqlite3] [egocipherkey] \<optional-persistedkey\>
+DecryptMemories.py [gallery_encrypteddb] [scdb-27.sqlite3] [keychain-file]
+
+Keychain files from Cellebrite and Graykey are supported, reach out if you have a keychain that does not work and we'll fix it
 
 Program will prompt you to open the decrypted database in forensic browser; do so before continuing.
 
