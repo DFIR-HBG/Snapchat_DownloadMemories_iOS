@@ -1,10 +1,8 @@
-# Snap_DecryptMemories
-Script to download and decrypt memories and MEO from Snapchat on IOS. Requires the keys for memories to be present in the keychain, as well as the MEO key to get the MEO content.
+# Snap_DownloadMemories_iOS
+**Script to download and decrypt Memories and MEO from Snapchat on IOS. Requires the keys for memories to be present in the keychain, as well as the MEO key to get the MEO content.**
 
-After decrypting the database, it must be repaired. If you have SQLite3 installed on your system it will perform the repair, if not you require any other way to fix a broken database; personal preference is Sanderssons Sqlite forensics tool https://sqliteforensictoolkit.com/ but other tools that renders the database viewable should also function.
-
-
-
+## Since a few users had problems with finding and using the keys correctly the script now reads the keychain instead
+Keys used from the keychain:
 |Application|Key|Base64 string|
 |---|---|---|
 |Snapchat Memories|egocipher.key.avoidkeyderivation|ZWdvY2lwaGVyLmtleS5hdm9pZGtleWRlcml2YXRpb24=|
@@ -13,12 +11,14 @@ After decrypting the database, it must be repaired. If you have SQLite3 installe
 
 
 
-Run via CMD
-DecryptMemories.py [gallery_encrypteddb] [scdb-27.sqlite3] [keychain-file]
+## Run via CMD
+**`DecryptMemories.py [gallery_encrypteddb] [scdb-27.sqlite3] [keychain-file]`**
 
 Keychain files from Cellebrite and Graykey are supported, reach out if you have a keychain that does not work and we'll fix it
 
-Program will prompt you to open the decrypted database in forensic browser; do so before continuing.
+After decrypting the database, it must be repaired. If you have SQLite3 installed on your system it will perform the repair, if not you require any other way to fix a broken database; personal preference is Sanderssons Sqlite forensics tool https://sqliteforensictoolkit.com/ but other tools that renders the database viewable should also function.
+
+If you do not have SQLite3 the script will prompt you to open the decrypted database in forensic browser; do so before continuing.
 
 IF YOU USE ANY OTHER PROGRAM THAN SANDERSON FORENSIC BROWSER FOR SQLITE: the script is looking for a file named "gallery_decrypted.sqlite_r" which is the default name given in sandersons. Using anything else will necessitate you to rename the file.
 
